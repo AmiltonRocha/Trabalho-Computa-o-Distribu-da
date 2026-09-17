@@ -233,12 +233,21 @@ Leituras importantes que tirei da tabela:
 
 ### Gráficos 2D do cálculo analítico
 
-Gerei três gráficos 2D (disponibilidade × p), um para cada critério, com uma
-curva por valor de n. Arquivos gerados em `Exercicio-1.2/`:
+Gerei três gráficos 2D (disponibilidade × p, com p variando de 0 a 1), um para
+cada critério, com uma curva por valor de n ∈ {1, 2, 3, 5, 10}. Arquivos gerados
+em `Exercicio-1.2/`:
 
-- `grafico_analitico_k=1.png`
-- `grafico_analitico_k=n_2.png`
-- `grafico_analitico_k=n.png`
+**k = 1 (consulta/leitura)**
+
+![Disponibilidade analítica — k = 1](Exercicio-1.2/grafico_analitico_k=1.png)
+
+**k = n/2**
+
+![Disponibilidade analítica — k = n/2](Exercicio-1.2/grafico_analitico_k=n_2.png)
+
+**k = n (atualização/escrita)**
+
+![Disponibilidade analítica — k = n](Exercicio-1.2/grafico_analitico_k=n.png)
 
 Observação visual: no gráfico de **k = 1** as curvas ficam "esmagadas" no topo
 (disponibilidade próxima de 1 já com p médio); no de **k = n** elas sobem bem
@@ -256,73 +265,118 @@ Para validar a fórmula na prática, implementei um simulador que em cada
 2. Conta quantos servidores estão disponíveis.
 3. Verifica se o serviço permaneceu operacional: nº disponíveis ≥ k.
 
-Repetindo isso por **100.000 rodadas** em cada configuração (n, k, p), calculei
-a **frequência experimental** de disponibilidade (proporção de rodadas
-bem-sucedidas) e comparei com o valor analítico.
+Repetindo esse processo com **diferentes volumes de rodadas (1, 100 e
+100.000)** em cada configuração (n, k, p), calculei a **frequência
+experimental** de disponibilidade (proporção de rodadas bem-sucedidas) e
+comparei com o valor analítico. Para os testes usei **n fixos em 10, 50 e 100**
+(a parte analítica já explorou n pequenos, de 1 a 10; aqui o foco é n maior, o
+que mostra bem o efeito do número de réplicas). Comparar 1, 100 e 100.000
+rodadas deixa evidente a **convergência**: quanto mais rodadas, mais a
+frequência observada se aproxima do valor teórico.
 
-*(Nota: o desenho do simulador — a mecânica de sortear por servidor usando
-`rng.random() <= p` e acumular o número de sucessos — foi formado com auxílio
-de IA. Compreendi o funcionamento: o `random.random()` produz um valor uniforme
-em [0,1], compará-lo com `p` é a forma de simular Bernoulli, e a semente
-fixa `random.Random(42)` garante que os resultados sejam reproduzíveis.)*
+*(Nota: o desenho do simulador — a mecânica de sortear por servidor comparando
+um número uniforme com `p` — foi formado com auxílio de IA. Compreendi o
+funcionamento: um valor uniforme em [0,1] comparado com `p` é a forma de
+simular Bernoulli, e a semente fixa `np.random.default_rng(42)` garante que os
+resultados sejam reproduzíveis. Como 100.000 rodadas com n = 100 geram muitos
+sorteios, a simulação foi **vetorizada com numpy** e processada em blocos de
+100.000 rodadas por vez.)*
 
 Principais funções do simulador:
 
 ```python
+import numpy as np
+
+BLOCO = 100_000  # rodadas processadas por vez
+
 def simular_rodada(n, p, rng):
-    disponiveis = 0
-    for _ in range(n):
-        u = rng.random()
-        if u <= p:
-            disponiveis += 1
-    return disponiveis
+    """Simula UMA rodada: sorteia o estado de cada servidor."""
+    u = rng.random(n)
+    return int((u <= p).sum())
 
 def simular(n, k, p, rodadas=100000, rng=None):
+    """Frequência experimental de disponibilidade (vetorizada em blocos)."""
     if rng is None:
-        rng = random.Random()
+        rng = np.random.default_rng()
     sucessos = 0
-    for _ in range(rodadas):
-        if simular_rodada(n, p, rng) >= k:
-            sucessos += 1
+    restantes = rodadas
+    while restantes > 0:
+        bloco = min(BLOCO, restantes)
+        u = rng.random((bloco, n))          # sorteia todos os servidores
+        disponiveis = (u <= p).sum(axis=1)  # nº de servidores de pé por rodada
+        sucessos += int((disponiveis >= k).sum())
+        restantes -= bloco
     return sucessos / rodadas
 ```
 
 ### Resultados experimentais x analíticos (tabela)
 
-A tabela completa está em `Exercicio-1.2/tabela_simulacao.csv`. Uma amostra dos
-resultados (100.000 rodadas, semente fixa):
+A tabela completa está em `Exercicio-1.2/tabela_simulacao.csv` e contém uma
+coluna **rodadas** (1, 100 e 100.000), com semente fixa 42. Abaixo, um trecho
+com n = 10 e k = n mostrando a **convergência** conforme o número de rodadas
+cresce (analítico = 0.904382):
 
-| n | k | critério | p | analítico | simulado | diferença |
-|---|-------|----------|-------|-----------|----------|-----------|
-| 2 | 2 | k=n | 0.85 | 0.722500 | 0.722430 | 0.000070 |
-| 3 | 3 | k=n | 0.70 | 0.343000 | 0.343910 | 0.000910 |
-| 5 | 5 | k=n | 0.70 | 0.168070 | 0.170040 | 0.001970 |
-| 5 | 5 | k=n | 0.85 | 0.443705 | 0.441080 | 0.002625 |
-| 10 | 10 | k=n | 0.70 | 0.028248 | 0.027900 | 0.000348 |
-| 10 | 10 | k=n | 0.99 | 0.904382 | 0.902720 | 0.001662 |
+| rodadas | n | k | critério | p | analítico | simulado | diferença |
+|---------|---|-------|----------|-------|-----------|----------|-----------|
+| 1 | 10 | 10 | k=n | 0.99 | 0.904382 | 1.000000 | 0.095618 |
+| 100 | 10 | 10 | k=n | 0.99 | 0.904382 | 0.830000 | 0.074382 |
+| 100000 | 10 | 10 | k=n | 0.99 | 0.904382 | 0.902720 | 0.001662 |
 
-A **diferença máxima** observada entre o valor analítico e o simulado foi de
-aproximadamente **0.0026** (0,26 pontos percentuais). Isso é o erro amostral
-esperado de uma simulação com 100.000 rodadas: quanto maior o número de
-rodadas, menor a diferença.
+Com 1 rodada o resultado é instável (depende só de um sorteio); com 100 já se
+aproxima; e com 100.000 rodadas a diferença cai para menos de 0,2 ponto
+percentual.
+
+Amostra dos resultados com **100.000 rodadas** (n ∈ {10, 50, 100}, k = n):
+
+| rodadas | n | k | critério | p | analítico | simulado | diferença |
+|---------|---|-------|----------|-------|-----------|----------|-----------|
+| 100000 | 10 | 10 | k=n | 0.70 | 0.028248 | 0.028340 | 0.000092 |
+| 100000 | 10 | 10 | k=n | 0.85 | 0.196874 | 0.198030 | 0.001156 |
+| 100000 | 10 | 10 | k=n | 0.95 | 0.598737 | 0.599450 | 0.000713 |
+| 100000 | 10 | 10 | k=n | 0.99 | 0.904382 | 0.902720 | 0.001662 |
+| 100000 | 50 | 50 | k=n | 0.85 | 0.000296 | 0.000330 | 0.000034 |
+| 100000 | 50 | 50 | k=n | 0.95 | 0.076945 | 0.076040 | 0.000905 |
+| 100000 | 50 | 50 | k=n | 0.99 | 0.605006 | 0.606180 | 0.001174 |
+| 100000 | 100 | 100 | k=n | 0.95 | 0.005921 | 0.005730 | 0.000191 |
+| 100000 | 100 | 100 | k=n | 0.99 | 0.366032 | 0.366850 | 0.000818 |
+
+A **diferença máxima** observada entre o valor analítico e o simulado (com
+100.000 rodadas) foi de aproximadamente **0.0017** (0,17 pontos percentuais).
+Isso é o erro amostral esperado: quanto maior o número de rodadas, menor a
+diferença — e é exatamente esse comportamento que os três volumes de rodadas
+(1, 100 e 100.000) permitem visualizar.
 
 ### Gráficos 2D comparando teoria e prática
 
-Gerei também gráficos 2D sobrepondo as curvas **analítica** (linha sólida) e
-**simulada** (linha tracejada) para cada critério. Arquivos gerados em
+Gerei gráficos 2D com as curvas **analítica** (linha sólida) e **simulada**
+(linha tracejada). Os gráficos estão **separados por n** (um arquivo para cada
+valor de n = 10, 50 e 100). Em cada arquivo há **três subgráficos**, um para
+cada volume de rodadas (1, 100 e 100.000), e cada subgráfico traz as três curvas
+de k (k = 1, k = n/2 e k = n) nas versões analítica e simulada. A legenda de
+cada subgráfico indica o número de rodadas. Arquivos gerados em
 `Exercicio-1.2/`:
 
-- `grafico_simulacao_k=1.png`
-- `grafico_simulacao_k=n_2.png`
-- `grafico_simulacao_k=n.png`
+**n = 10**
 
-Nos gráficos, as curvas analítica e simulada ficam praticamente **sobrepostas**,
-o que evidencia que a simulação converge para a fórmula teórica — validando a
-dedução do Exercício 1.1.
+![Simulação x analítico — n = 10](Exercicio-1.2/grafico_simulacao_n=10.png)
 
-*(Nota: a montagem dos gráficos com `matplotlib` (laços por critério, `plot`
-sobrepondo séries, eixo, grade, legenda e `savefig`) foi formada com auxílio de
-IA; os rótulos e a interpretação foram feitas por mim.)*
+**n = 50**
+
+![Simulação x analítico — n = 50](Exercicio-1.2/grafico_simulacao_n=50.png)
+
+**n = 100**
+
+![Simulação x analítico — n = 100](Exercicio-1.2/grafico_simulacao_n=100.png)
+
+Nos subgráficos de 1 e 100 rodadas as curvas simuladas ficam "serrilhadas" e
+afastadas da teórica; à medida que o número de rodadas aumenta, elas se
+estabilizam e, com 100.000 rodadas, ficam praticamente **sobrepostas** às
+curvas analíticas — o que evidencia que a simulação converge para a fórmula
+teórica, validando a dedução do Exercício 1.1.
+
+*(Nota: a montagem dos gráficos com `matplotlib` (laços por n e por nº de
+rodadas, `plot` sobrepondo séries, eixo, grade, legenda e `savefig`) foi formada
+com auxílio de IA; os rótulos e a interpretação foram feitas por mim.)*
 
 ## 1.2.3. Conclusão do Exercício 1.2
 
@@ -331,9 +385,12 @@ IA; os rótulos e a interpretação foram feitas por mim.)*
 - A tabela e os gráficos mostram que **k = 1** maximiza a disponibilidade
   (leitura tolerante a falhas) e **k = n** minimiza (escrita exige quórum
   total). Quanto maior n, mais nítida essa diferença.
-- O simulador estocástico validou a fórmula: as frequências experimentais
-  ficaram todas muito próximas dos valores teóricos (diferença máxima ~0.26%),
-  confirmando que a dedução matemática está correta.
+- O simulador estocástico validou a fórmula: com 100.000 rodadas as frequências
+  experimentais ficaram todas muito próximas dos valores teóricos (diferença
+  máxima ~0,17%), confirmando que a dedução matemática está correta. O uso de
+  1, 100 e 100.000 rodadas deixou claro o comportamento do erro amostral: com
+  poucas rodadas o resultado oscila bastante e, conforme o número de rodadas
+  aumenta, o simulado converge para o analítico.
 
 ---
 
@@ -371,11 +428,15 @@ Computação Distribuida/
 │   └── (README.md foi movido para a raiz)
 ├── Exercicio-1.2/
 │   ├── analitico.py               <- implementação da fórmula + tabela + gráficos
-│   ├── simulador.py               <- simulador estocástico + tabela + gráficos
+│   ├── simulador.py               <- simulador estocástico (rodadas 1, 100 e 100.000) + tabela + gráficos
 │   ├── tabela_analitica.csv       <- tabela analítica
 │   ├── tabela_simulacao.csv       <- tabela experimental x analítico
-│   ├── grafico_analitico_*.png    <- gráficos 2D analíticos
-│   └── grafico_simulacao_*.png    <- gráficos 2D comparativos
+│   ├── grafico_analitico_k=1.png  <- gráfico analítico (k = 1)
+│   ├── grafico_analitico_k=n_2.png<- gráfico analítico (k = n/2)
+│   ├── grafico_analitico_k=n.png  <- gráfico analítico (k = n)
+│   ├── grafico_simulacao_n=10.png <- gráfico simulado x analítico (n = 10)
+│   ├── grafico_simulacao_n=50.png <- gráfico simulado x analítico (n = 50)
+│   └── grafico_simulacao_n=100.png<- gráfico simulado x analítico (n = 100)
 └── venv/                          <- ambiente virtual Python com as dependências
 ```
 

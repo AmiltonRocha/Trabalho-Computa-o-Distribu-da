@@ -71,20 +71,22 @@ if __name__ == "__main__":
     print(tabela.to_string(index=False))
 
     print("\nGerando gráficos 2D...")
-    p_axis = [i / 100 for i in range(50, 101)]
+    p_axis = [round(i / 20, 2) for i in range(0, 21)]
     criterios = ["k=1", "k=n/2", "k=n"]
 
     for criterio in criterios:
-        plt.figure()
+        plt.figure(figsize=(10, 6))
         for n in valores_n:
             k = {"k=1": 1, "k=n/2": max(1, n // 2), "k=n": n}[criterio]
             series = [disponibilidade(n, k, p) for p in p_axis]
             plt.plot(p_axis, series, marker="o", label=f"n = {n}")
+        plt.xlim(-0.02, 1.15)
+        plt.ylim(-0.02, 1.05)
         plt.title(f"Disponibilidade analítica — {criterio}")
         plt.xlabel("p (probabilidade por servidor)")
         plt.ylabel("A (disponibilidade do serviço)")
         plt.grid(True, alpha=0.3)
-        plt.legend()
+        plt.legend(loc="lower right")
         plt.tight_layout()
         fig_name = f"grafico_analitico_{criterio.replace('/', '_')}.png"
         plt.savefig(BASE_DIR / fig_name)
